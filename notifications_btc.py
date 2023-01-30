@@ -12,7 +12,7 @@ platform_state = ''
 state = ''
 chats = {'bitpapa': -1001679514902,
          'localbtc': -1001298069718,
-         'transactions': -859327966}
+         'transactions': -1001800331790}
 already_checked = {}
 admin_user_id = 5945088520
 
@@ -111,6 +111,7 @@ def start_command(message):
 def incoming_message(message):
     global state
     global platform_state
+    print(message.chat.id)
    # if message.from_user.id != admin_user_id:
     #    return
     if message.text == 'Добавить кошелек 💰':
