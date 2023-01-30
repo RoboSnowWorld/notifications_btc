@@ -6,7 +6,7 @@ from telebot import types
 import requests
 import json
 
-bot = telebot.TeleBot('5875991889:AAHeFeDzCQ1fd1Sc2EPwohijwi4rpwn4nZY')
+bot = telebot.TeleBot('5875991889:AAH-Xn-jqcYK94TeV6ITUyahaZJRKx82_D0')
 
 platform_state = ''
 state = ''
@@ -33,14 +33,14 @@ def check_wallets():
 
 def check_users():
     while True:
-        with open('users_bitpapa.txt') as f:
-            for line in f.read().splitlines():
-                time.sleep(2)
-                check_user_online(line, 'bitpapa')
-        with open('users_localbtc.txt') as f:
-            for line in f.read().splitlines():
-                time.sleep(2)
-                check_user_online(line, 'localbtc')
+        with open('users.json') as f:
+            users_json = f.read()
+        users = json.loads(users_json)
+
+        for user in users['bitpapa'].split('\n'):
+            check_user_online(user, 'bitpapa')
+        for user in users['localbtc'].split('\n'):
+            check_user_online(user, 'localbtc')
 
 
 def check_user_online(username, platform):
@@ -120,23 +120,16 @@ def incoming_message(message):
         bot.send_message(message.chat.id, 'Введите ник пользователя')
         state = 'add_user'
     elif 'Список пользователей 📃' in message.text:
-        users = ''
+        users_out = ''
         if message.chat.id == chats['bitpapa']:
-            with open('users_bitpapa.txt') as f:
-                for line in f.read().splitlines():
-                    users += line + '\n'
+            with open('users.json') as f:
+                users_json = f.read()
+            users_out = json.loads(users_json)['bitpapa']
         elif message.chat.id == chats['localbtc']:
-            with open('users_localbtc.txt') as f:
-                for line in f.read().splitlines():
-                    users += line + '\n'
-        else:
-            with open('users_bitpapa.txt') as f:
-                for line in f.read().splitlines():
-                    users += line + '\n'
-            with open('users_localbtc.txt') as f:
-                for line in f.read().splitlines():
-                    users += line + '\n'
-        bot.send_message(message.chat.id, users)
+            with open('users.json') as f:
+                users_json = f.read()
+            users_out = json.loads(users_json)['localbtc']
+        bot.send_message(message.chat.id, users_out)
     elif state == 'add_wallet':
         with open('last_transactions.json') as f:
             last_transactions_json = f.read()
@@ -164,28 +157,40 @@ def incoming_message(message):
     elif state == 'add_user':
         if message.chat.id == chats['bitpapa']:
             if message.text[0] == '-':
-                with open('users_bitpapa.txt') as f:
-                    users = f.readlines()
-                    users[-1] += '\n'
-                if message.text[1:] + '\n' in users:
-                     users.remove(message.text[1:] + '\n')
-                with open('users_bitpapa.txt', 'w') as f:
-                    f.writelines(users)
+                with open('users.json') as f:
+                    users_json = f.read()
+                    users = json.loads(users_json)
+                    index = users['bitpapa'].find(message.text[1:])
+                    users['bitpapa'] = users['bitpapa'][:index] + users['bitpapa'][index + len(message.text) + 1:]
+                with open('users.json','w') as f:
+                    users_json = json.dumps(users)
+                    f.write(users_json)
             else:
-                with open('users_bitpapa.txt', 'a') as f:
-                    f.write(message.text)
+                with open('users.json') as f:
+                    users_json = f.read()
+                    users = json.loads(users_json)
+                    users['bitpapa'] += message.text + '\n'
+                with open('users.json', 'w') as f:
+                    users_json = json.dumps(users)
+                    f.write(users_json)
         elif message.chat.id == chats['localbtc']:
             if message.text[0] == '-':
-                with open('users_localbtc.txt') as f:
-                    users = f.readlines()
-                    users[-1] += '\n'
-                if message.text[1:] + '\n' in users:
-                     users.remove(message.text[1:] + '\n')
-                with open('users_localbtc.txt', 'w') as f:
-                    f.writelines(users)
+                with open('users.json') as f:
+                    users_json = f.read()
+                    users = json.loads(users_json)
+                    index = users['localbtc'].find(message.text[1:])
+                    users['localbtc'] = users['localbtc'][:index] + users['localbtc'][index + len(message.text) + 1:]
+                with open('users.json','w') as f:
+                    users_json = json.dumps(users)
+                    f.write(users_json)
             else:
-                with open('users_localbtc.txt', 'a') as f:
-                    f.write(message.text)
+                with open('users.json') as f:
+                    users_json = f.read()
+                    users = json.loads(users_json)
+                    users['bitpapa'] += message.text + '\n'
+                with open('users.json', 'w') as f:
+                    users_json = json.dumps(users)
+                    f.write(users_json)
         bot.send_message(message.chat.id, 'Успешно ✅')
         start_command(message)
 
