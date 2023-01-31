@@ -19,8 +19,9 @@ admin_user_id = 5945088520
 general_markup = telebot.types.ReplyKeyboardMarkup(row_width=2)
 generalbtn_1 = types.KeyboardButton('Добавить кошелек 💰')
 generalbtn_2 = types.KeyboardButton('Добавить пользователя 👤')
+generalbtn_3 = types.KeyboardButton('Добавить обьявление ✅')
 generalbtn_4 = types.KeyboardButton('Список пользователей 📃')
-general_markup.add(generalbtn_1, generalbtn_2, generalbtn_4)
+general_markup.add(generalbtn_1, generalbtn_2, generalbtn_3, generalbtn_4)
 
 def check_wallets():
     while True:
@@ -41,6 +42,44 @@ def check_users():
             check_user_online(user, 'bitpapa')
         for user in users['localbtc'].split('\n'):
             check_user_online(user, 'localbtc')
+
+def check_ads():
+    while True:
+        with open('ads.json') as f:
+            ads_json = f.read()
+        ads = json.loads(ads_json)
+        for ad in ads['bitpapa']:
+            for user in ad.keys():
+                check_ad('bitpapa', user, ad[user])
+        for ad in ads['localbtc']:
+            for user in ad.keys():
+                check_ad('localbtc', user, ad[user])
+
+def check_ad(platform, user, uid):
+    current_price = [0,0]
+    with open('last_prices.json') as f:
+        last_prices_json = f.read()
+    last_prices = json.loads(last_prices_json)
+    if platform == 'bitpapa':
+        r = requests.get(f'https://bitpapa.com/api/v1/offers/of/{user}')
+        offers = r.json()['ads']
+        for offer in offers:
+            if offer['human_id'] == uid:
+                current_price = str(offer['amount_min']) + ' ' + str(offer['amount_max'])
+
+
+    elif platform == 'localbtc':
+        # "min_amount"
+       # "max_amount"
+       # "min_amount_available"
+       # "max_amount_available"
+        current_price = '0 0'
+    last_price = last_prices[uid]
+    if current_price != last_price:
+        changed = True
+    last_prices[uid] = current_price
+    bot.send_message(chats[platform], f'В обьявлении {uid} пользователя {user} Изменились ограничения.\n'
+                                      f'Было: {last_price}\nСтало: {current_price}')
 
 
 def check_user_online(username, platform):
@@ -87,6 +126,24 @@ def check_transfers(wallet, name):
     if not transactions:
         return
     last_transaction = transactions[0]['hash']
+    wallets_with_amounts_input = ''
+    for inp in transactions[0]['inputs']:
+        summ = inp['prev_out']['value']
+        if len(str(summ)) < 9:
+            summ_output = '0.' + '0' * (8 - len(str(summ))) + str(summ)
+        else:
+            summ_output = str(summ)[0] + '.' + str(summ)[1:]
+        wallets_with_amounts_input += summ_output + '\n' + inp['prev_out']['addr'] + '\n'
+
+    wallets_with_amounts_output = ''
+    for inp in transactions[0]['out']:
+        summ = inp['value']
+        if len(str(summ)) < 9:
+            summ_output = '0.' + '0' * (8 - len(str(summ))) + str(summ)
+        else:
+            summ_output = str(summ)[0] + '.' + str(summ)[1:]
+        wallets_with_amounts_output += summ_output + '\n' + inp['addr'] + '\n'
+
     with open('last_transactions.json') as f:
         last_transactions_json = f.read()
     last_transactions = json.loads(last_transactions_json)
@@ -95,8 +152,8 @@ def check_transfers(wallet, name):
         if len(str(summ)) < 9:
             summ_output = '0.' + '0' * (8 - len(str(summ))) + str(summ)
         else:
-            summ_output = str(summ)[:2] + '.' + str(summ)[2:]
-        bot.send_message(chats['transactions'], f'Новая транзакция на кошелек {name} {wallet} сумма {summ_output}')
+            summ_output = str(summ)[0] + '.' + str(summ)[1:]
+        bot.send_message(chats['transactions'], f'Новая транзакция на кошелек {name} {wallet}\n{last_transaction}\n\nс\n{wallets_with_amounts_input}\n\nна\n{wallets_with_amounts_output}')
         last_transactions[wallet][0] = last_transaction
     last_transactions_json = json.dumps(last_transactions)
     with open("last_transactions.json", "w") as my_file:
@@ -111,7 +168,6 @@ def start_command(message):
 def incoming_message(message):
     global state
     global platform_state
-    print(message.chat.id)
    # if message.from_user.id != admin_user_id:
     #    return
     if message.text == 'Добавить кошелек 💰':
@@ -120,6 +176,9 @@ def incoming_message(message):
     elif 'Добавить пользователя' in message.text:
         bot.send_message(message.chat.id, 'Введите ник пользователя')
         state = 'add_user'
+    elif 'Добавить обьявление' in message.text:
+        bot.send_message(message.chat.id, 'Введите ник')
+        state = 'set_nickname_ad'
     elif 'Список пользователей 📃' in message.text:
         users_out = ''
         if message.chat.id == chats['bitpapa']:
@@ -141,6 +200,45 @@ def incoming_message(message):
             my_file.write(last_transactions_json)
         bot.send_message(message.chat.id, 'Введите имя кошелька')
         state = 'create_wallet_name'
+    elif state == 'set_nickname_ad':
+        with open('ads.json') as f:
+            ads_json = f.read()
+        ads = json.loads(ads_json)
+        if message.chat.id == chats['bitpapa']:
+            ads['bitpapa'].append({message.text: 'None'})
+
+        elif message.chat.id == chats['localbtc']:
+            ads['localbtc'].append({message.text: 'None'})
+        ads_json = json.dumps(ads)
+        with open('ads.json','w') as f:
+            f.write(ads_json)
+        bot.send_message(message.chat.id, 'Установите id обьявления')
+        state = 'set_uid_ad'
+    elif state == 'set_uid_ad':
+        with open('ads.json') as f:
+            ads_json = f.read()
+        ads = json.loads(ads_json)
+        if message.chat.id == chats['bitpapa']:
+            for ad in ads['bitpapa']:
+                for username in ad.keys():
+                    if ad[username] == 'None':
+                        ad[username] = message.text
+        elif message.chat.id == chats['bitpapa']:
+            for ad in ads['bitpapa']:
+                for username in ad.keys():
+                    if ad[username] == 'None':
+                        ad[username] = message.text
+        with open('ads.json','w') as f:
+            ads_json = json.dumps(ads)
+            f.write(ads_json)
+        with open('last_prices.json') as f:
+            last_prices_json = f.read()
+        last_prices = json.loads(last_prices_json)
+        last_prices[message.text] = '0,0'
+        with open('last_prices.json','w') as f:
+            last_prices_json = json.dumps(last_prices)
+            f.write(last_prices_json)
+        bot.send_message(message.chat.id, 'Успешно ✅')
     elif state == 'create_wallet_name':
         with open('last_transactions.json') as f:
             last_transactions_json = f.read()
@@ -162,7 +260,7 @@ def incoming_message(message):
                     users_json = f.read()
                     users = json.loads(users_json)
                     index = users['bitpapa'].find(message.text[1:])
-                    users['bitpapa'] = users['bitpapa'][:index] + users['bitpapa'][index + len(message.text) + 1:]
+                    users['bitpapa'] = users['bitpapa'][:index] + users['bitpapa'][index + len(message.text):]
                 with open('users.json','w') as f:
                     users_json = json.dumps(users)
                     f.write(users_json)
@@ -180,7 +278,7 @@ def incoming_message(message):
                     users_json = f.read()
                     users = json.loads(users_json)
                     index = users['localbtc'].find(message.text[1:])
-                    users['localbtc'] = users['localbtc'][:index] + users['localbtc'][index + len(message.text) + 1:]
+                    users['localbtc'] = users['localbtc'][:index] + users['localbtc'][index + len(message.text):]
                 with open('users.json','w') as f:
                     users_json = json.dumps(users)
                     f.write(users_json)
@@ -188,7 +286,7 @@ def incoming_message(message):
                 with open('users.json') as f:
                     users_json = f.read()
                     users = json.loads(users_json)
-                    users['bitpapa'] += message.text + '\n'
+                    users['localbtc'] += message.text + '\n'
                 with open('users.json', 'w') as f:
                     users_json = json.dumps(users)
                     f.write(users_json)
@@ -200,6 +298,9 @@ checking_users_thread.start()
 
 checking_transactions_thread = threading.Thread(target=check_wallets)
 checking_transactions_thread.start()
+
+# checking_transactions_thread = threading.Thread(target=check_ads)
+# checking_transactions_thread.start()
 
 while True:
     try:
