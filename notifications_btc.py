@@ -39,8 +39,10 @@ def check_users():
         users = json.loads(users_json)
 
         for user in users['bitpapa'].split('\n'):
+            time.sleep(2)
             check_user_online(user, 'bitpapa')
         for user in users['localbtc'].split('\n'):
+            time.sleep(2)
             check_user_online(user, 'localbtc')
 
 def check_ads():
@@ -50,36 +52,48 @@ def check_ads():
         ads = json.loads(ads_json)
         for ad in ads['bitpapa']:
             for user in ad.keys():
+                time.sleep(2)
                 check_ad('bitpapa', user, ad[user])
         for ad in ads['localbtc']:
             for user in ad.keys():
+                time.sleep(2)
                 check_ad('localbtc', user, ad[user])
 
 def check_ad(platform, user, uid):
-    current_price = [0,0]
+    current_price = '0 - 0'
+    changed = False
     with open('last_prices.json') as f:
         last_prices_json = f.read()
     last_prices = json.loads(last_prices_json)
     if platform == 'bitpapa':
-        r = requests.get(f'https://bitpapa.com/api/v1/offers/of/{user}')
-        offers = r.json()['ads']
+        try:
+            r = requests.get(f'https://bitpapa.com/api/v1/offers/of/{user}')
+            offers = r.json()['ads']
+        except:
+            return
         for offer in offers:
-            if offer['human_id'] == uid:
-                current_price = str(offer['amount_min']) + ' ' + str(offer['amount_max'])
+            if offer['id'].split('-')[0] == uid:
+                current_price = str(offer['limit_min']).split('.')[0] + ' - ' + str(offer['limit_max']).split('.')[0]
 
 
     elif platform == 'localbtc':
+       # conn = api.hmac(hmac_key, hmac_secret)
+      # res = conn.call('GET', f'/api/ad-get/{uid}/').json()
         # "min_amount"
        # "max_amount"
        # "min_amount_available"
        # "max_amount_available"
-        current_price = '0 0'
+        current_price = '0 - 0'
     last_price = last_prices[uid]
     if current_price != last_price:
         changed = True
     last_prices[uid] = current_price
-    bot.send_message(chats[platform], f'В обьявлении {uid} пользователя {user} Изменились ограничения.\n'
-                                      f'Было: {last_price}\nСтало: {current_price}')
+    if changed:
+        bot.send_message(chats[platform], f'В обьявлении {uid} пользователя {user} Изменились ограничения.\n'
+                                      f'Было: {last_price} RUB\nСтало: {current_price} RUB')
+    last_prices_json = json.dumps(last_prices)
+    with open('last_prices.json','w') as f:
+        f.write(last_prices_json)
 
 
 def check_user_online(username, platform):
@@ -127,13 +141,18 @@ def check_transfers(wallet, name):
         return
     last_transaction = transactions[0]['hash']
     wallets_with_amounts_input = ''
+    if len(transactions[0]['inputs']) > 5:
+        transactions[0]['inputs'] = transactions[0]['inputs'][:5]
     for inp in transactions[0]['inputs']:
         summ = inp['prev_out']['value']
         if len(str(summ)) < 9:
             summ_output = '0.' + '0' * (8 - len(str(summ))) + str(summ)
         else:
             summ_output = str(summ)[0] + '.' + str(summ)[1:]
-        wallets_with_amounts_input += summ_output + '\n' + inp['prev_out']['addr'] + '\n'
+        if inp['prev_out']['addr'] == wallet:
+            wallets_with_amounts_input += f'**{summ_output}**' + '\n' + inp['prev_out']['addr'] + '\n'
+        else:
+            wallets_with_amounts_input += summ_output + '\n' + inp['prev_out']['addr'] + '\n'
 
     wallets_with_amounts_output = ''
     for inp in transactions[0]['out']:
@@ -142,7 +161,10 @@ def check_transfers(wallet, name):
             summ_output = '0.' + '0' * (8 - len(str(summ))) + str(summ)
         else:
             summ_output = str(summ)[0] + '.' + str(summ)[1:]
-        wallets_with_amounts_output += summ_output + '\n' + inp['addr'] + '\n'
+        if inp['addr'] == wallet:
+            wallets_with_amounts_output += f'**{summ_output}**' + '\n' + inp['addr'] + '\n'
+        else:
+            wallets_with_amounts_output += summ_output + '\n' + inp['addr'] + '\n'
 
     with open('last_transactions.json') as f:
         last_transactions_json = f.read()
@@ -153,7 +175,7 @@ def check_transfers(wallet, name):
             summ_output = '0.' + '0' * (8 - len(str(summ))) + str(summ)
         else:
             summ_output = str(summ)[0] + '.' + str(summ)[1:]
-        bot.send_message(chats['transactions'], f'Новая транзакция на кошелек {name} {wallet}\n{last_transaction}\n\nс\n{wallets_with_amounts_input}\n\nна\n{wallets_with_amounts_output}')
+        bot.send_message(chats['transactions'], f'Новая транзакция на кошелек\n**{name}**\n{last_transaction}\n\nна\n{wallets_with_amounts_output}\n\nС\n{wallets_with_amounts_input}')
         last_transactions[wallet][0] = last_transaction
     last_transactions_json = json.dumps(last_transactions)
     with open("last_transactions.json", "w") as my_file:
@@ -234,7 +256,7 @@ def incoming_message(message):
         with open('last_prices.json') as f:
             last_prices_json = f.read()
         last_prices = json.loads(last_prices_json)
-        last_prices[message.text] = '0,0'
+        last_prices[message.text] = '0 - 0'
         with open('last_prices.json','w') as f:
             last_prices_json = json.dumps(last_prices)
             f.write(last_prices_json)
@@ -299,8 +321,8 @@ checking_users_thread.start()
 checking_transactions_thread = threading.Thread(target=check_wallets)
 checking_transactions_thread.start()
 
-# checking_transactions_thread = threading.Thread(target=check_ads)
-# checking_transactions_thread.start()
+checking_transactions_thread = threading.Thread(target=check_ads)
+checking_transactions_thread.start()
 
 while True:
     try:
