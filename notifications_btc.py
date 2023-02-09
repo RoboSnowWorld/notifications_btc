@@ -5,6 +5,7 @@ import telebot
 from telebot import types
 import requests
 import json
+from lbcapi import api
 
 bot = telebot.TeleBot('5875991889:AAH-Xn-jqcYK94TeV6ITUyahaZJRKx82_D0')
 
@@ -60,7 +61,9 @@ def check_ads():
                 check_ad('localbtc', user, ad[user])
 
 def check_ad(platform, user, uid):
-    current_price = '0 - 0'
+    if uid == 'None':
+        return
+    current_price = ' '
     changed = False
     with open('last_prices.json') as f:
         last_prices_json = f.read()
@@ -69,6 +72,7 @@ def check_ad(platform, user, uid):
         try:
             r = requests.get(f'https://bitpapa.com/api/v1/offers/of/{user}')
             offers = r.json()['ads']
+            currency = 'RUB'
         except:
             return
         for offer in offers:
@@ -77,20 +81,22 @@ def check_ad(platform, user, uid):
 
 
     elif platform == 'localbtc':
-       # conn = api.hmac(hmac_key, hmac_secret)
-      # res = conn.call('GET', f'/api/ad-get/{uid}/').json()
-        # "min_amount"
-       # "max_amount"
-       # "min_amount_available"
-       # "max_amount_available"
-        current_price = '0 - 0'
+       conn = api.hmac('eaced972f2349d480a43aa7540c5ad9a', 'cd811b5051ba8296a8e1f9a9503256bd2d012e5230efaa6a40eb7624165c2283')
+       res = conn.call('GET', f'/api/ad-get/{uid}/').json()
+       currency = res['data']['ad_list'][0]['data']['currency']
+       min_amount = res['data']['ad_list'][0]['data']['min_amount_available']
+       max_amount = res['data']['ad_list'][0]['data']['max_amount_available']
+       if max_amount == '31000.00' or max_amount == '0.00':
+           current_price = ' '
+       else:
+           current_price = f'{min_amount} - {max_amount}'
     last_price = last_prices[uid]
     if current_price != last_price:
         changed = True
     last_prices[uid] = current_price
     if changed:
         bot.send_message(chats[platform], f'В обьявлении {uid} пользователя {user} Изменились ограничения.\n'
-                                      f'Было: {last_price} RUB\nСтало: {current_price} RUB')
+                                      f'Было: {last_price} {currency}\nСтало: {current_price} {currency}')
     last_prices_json = json.dumps(last_prices)
     with open('last_prices.json','w') as f:
         f.write(last_prices_json)
@@ -98,6 +104,7 @@ def check_ad(platform, user, uid):
 
 def check_user_online(username, platform):
     global already_checked
+    online = False
     if platform == 'bitpapa':
         headers = {'Content-Type': 'application/json'}
         try:
@@ -111,7 +118,8 @@ def check_user_online(username, platform):
             r = requests.get(f'https://localbitcoins.com/accounts/profile/{username}')
         except:
             return
-        online = 'just now' in r.text
+        if 'just now' in r.text or '1 minute ago' in r.text or '2 minutes ago' in r.text:
+            online = True
 
     if online:
         bot.send_message(chats[platform], f'Пользователь {username} был только что в сети')
@@ -237,6 +245,13 @@ def incoming_message(message):
         bot.send_message(message.chat.id, 'Установите id обьявления')
         state = 'set_uid_ad'
     elif state == 'set_uid_ad':
+        with open('last_prices.json') as f:
+            last_prices_json = f.read()
+        last_prices = json.loads(last_prices_json)
+        last_prices[message.text] = ' '
+        with open('last_prices.json','w') as f:
+            last_prices_json = json.dumps(last_prices)
+            f.write(last_prices_json)
         with open('ads.json') as f:
             ads_json = f.read()
         ads = json.loads(ads_json)
@@ -245,21 +260,14 @@ def incoming_message(message):
                 for username in ad.keys():
                     if ad[username] == 'None':
                         ad[username] = message.text
-        elif message.chat.id == chats['bitpapa']:
-            for ad in ads['bitpapa']:
+        elif message.chat.id == chats['localbtc']:
+            for ad in ads['localbtc']:
                 for username in ad.keys():
                     if ad[username] == 'None':
                         ad[username] = message.text
         with open('ads.json','w') as f:
             ads_json = json.dumps(ads)
             f.write(ads_json)
-        with open('last_prices.json') as f:
-            last_prices_json = f.read()
-        last_prices = json.loads(last_prices_json)
-        last_prices[message.text] = '0 - 0'
-        with open('last_prices.json','w') as f:
-            last_prices_json = json.dumps(last_prices)
-            f.write(last_prices_json)
         bot.send_message(message.chat.id, 'Успешно ✅')
     elif state == 'create_wallet_name':
         with open('last_transactions.json') as f:
